@@ -6,7 +6,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { fetchItems } from "@/lib/api";
 import { Item } from "@/types";
 
-const CATEGORIES = ["all", "textbook", "stationery", "gadgets"];
+const CATEGORIES = ["All", "Textbook", "Stationery", "Gadgets"];
 const formatCurrency = (value?: number | null) =>
   typeof value === "number" ? `$${value.toFixed(2)}` : "N/A";
 

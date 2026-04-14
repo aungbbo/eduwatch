@@ -1,0 +1,9 @@
+node_modules/
+frontend/node_modules/
+backend/.venv/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+frontend/.next/
+backend/eduwatch.db

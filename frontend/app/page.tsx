@@ -66,10 +66,8 @@ export default function HomePage() {
   return (
     <main className="mx-auto max-w-6xl p-6 md:p-8">
       <section className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-700 via-blue-700 to-sky-600 p-6 text-white shadow-lg md:p-8">
-        <h1 className="mt-2 text-3xl font-bold md:text-4xl">EduWatch</h1>
-        <p className="mt-3 max-w-2xl text-sky-100">
-          Save more on student essentials.
-        </p>
+        <h1 className="text-2xl font-semibold md:text-3xl">Save more on student essentials.</h1>
+        <p className="mt-1 text-sky-200 text-sm">Track prices, set targets, and decide when to buy.</p>
         <div className="mt-6 grid gap-3 md:grid-cols-3">
           <div className="rounded-2xl bg-white/15 p-4 backdrop-blur-sm">
             <p className="text-xs text-blue-100">Items</p>

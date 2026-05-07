@@ -54,13 +54,13 @@ export default function HomePage() {
     });
   };
 
-  const pricedItems = items.filter((item) => typeof item.lowest_price === "number");
+  const pricedItems = items.filter((item) => typeof item.current_price === "number");
   const cheapestItem = [...pricedItems].sort(
-    (a, b) => (a.lowest_price ?? Number.MAX_VALUE) - (b.lowest_price ?? Number.MAX_VALUE)
+    (a, b) => (a.current_price ?? Number.MAX_VALUE) - (b.current_price ?? Number.MAX_VALUE)
   )[0];
   const averagePrice =
     pricedItems.length > 0
-      ? pricedItems.reduce((acc, item) => acc + (item.lowest_price ?? 0), 0) / pricedItems.length
+      ? pricedItems.reduce((acc, item) => acc + (item.current_price ?? 0), 0) / pricedItems.length
       : null;
 
   return (
@@ -82,7 +82,7 @@ export default function HomePage() {
           <div className="rounded-2xl bg-white/15 p-4 backdrop-blur-sm">
             <p className="text-xs text-blue-100">Best deal</p>
             <p className="mt-1 text-base font-semibold">
-              {cheapestItem ? `${cheapestItem.name} (${formatCurrency(cheapestItem.lowest_price)})` : "No pricing data"}
+              {cheapestItem ? `${cheapestItem.name} (${formatCurrency(cheapestItem.current_price)})` : "No pricing data"}
             </p>
           </div>
         </div>
@@ -142,7 +142,7 @@ export default function HomePage() {
               <h2 className="mt-3 text-lg font-semibold text-slate-900">{item.name}</h2>
               <p className="mt-2 text-sm text-slate-600">{item.description || "No description available."}</p>
               <div className="mt-4">
-                <p className="font-semibold text-emerald-700">Best price: {formatCurrency(item.lowest_price)}</p>
+                <p className="font-semibold text-slate-800">Price: {formatCurrency(item.current_price)}</p>
               </div>
               <p className="mt-3 text-sm font-medium text-indigo-700 group-hover:text-indigo-800">
                 View details ->

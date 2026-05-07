@@ -39,6 +39,12 @@ export async function addWatchlist(payload: {
   return res.json();
 }
 
+export async function getWatchlist(userTag: string): Promise<WatchlistEntry[]> {
+  const res = await fetch(`${API_BASE}/watchlist/${userTag}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch watchlist");
+  return res.json();
+}
+
 export async function getInsight(itemId: number): Promise<{ recommendation: string }> {
   const res = await fetch(`${API_BASE}/insights/${itemId}`, { method: "POST" });
   if (!res.ok) throw new Error("Failed to fetch insight");

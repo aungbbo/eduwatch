@@ -4,6 +4,7 @@ export type Item = {
   category: string;
   description?: string;
   lowest_price?: number | null;
+  current_price?: number | null;
 };
 
 export type PriceSnapshot = {

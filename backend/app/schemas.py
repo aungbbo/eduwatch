@@ -22,6 +22,7 @@ class ItemOut(BaseModel):
     category: str
     description: Optional[str] = None
     lowest_price: Optional[float] = None
+    current_price: Optional[float] = None
 
     class Config:
         from_attributes = True

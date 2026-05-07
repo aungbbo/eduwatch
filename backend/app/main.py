@@ -49,6 +49,14 @@ def list_items(
         if max_price is not None and lowest_price is not None and lowest_price > max_price:
             continue
 
+        latest_snapshot = (
+            db.query(PriceSnapshot)
+            .filter(PriceSnapshot.item_id == item.id)
+            .order_by(PriceSnapshot.captured_at.desc())
+            .first()
+        )
+        current_price = latest_snapshot.price if latest_snapshot else None
+
         output.append(
             ItemOut(
                 id=item.id,
@@ -56,6 +64,7 @@ def list_items(
                 category=item.category,
                 description=item.description,
                 lowest_price=lowest_price,
+                current_price=current_price,
             )
         )
     return output

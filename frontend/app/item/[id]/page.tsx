@@ -109,7 +109,7 @@ export default function ItemDetailPage() {
         <h1 className="mt-3 text-3xl font-bold text-slate-900">{item.name}</h1>
         <p className="mt-2 text-slate-600">{item.description}</p>
         <p className="mt-4 inline-flex rounded-xl bg-emerald-50 px-3 py-2 font-semibold text-emerald-700">
-          Best current price: {item.lowest_price ? `$${item.lowest_price.toFixed(2)}` : "N/A"}
+          Current price: {priceStats ? `$${priceStats.latest.toFixed(2)}` : "N/A"}
         </p>
         {priceStats && (
           <div className="mt-5 grid gap-3 sm:grid-cols-3">

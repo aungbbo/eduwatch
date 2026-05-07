@@ -219,7 +219,7 @@ def build_index(db) -> None:
         _watch_col.upsert(
             documents=[doc],
             ids=[f"watch-{entry.id}"],
-            metadatas=[{"user_tag": entry.user_tag, "item_id": entry.item_id}],
+            metadatas=[{"user_tag": entry.user_tag, "item_id": int(entry.item_id)}],
         )
 
     build_event_index()
@@ -229,14 +229,103 @@ def build_index(db) -> None:
 def upsert_watchlist_entry(entry, item_name: str, current_price: float | None) -> None:
     """Call this immediately after a new watchlist entry is saved."""
     doc = _watchlist_doc(entry, item_name, current_price)
+    # Store item_id as int — Chroma may return it as float/str; compare flexibly in retrieve
     _watch_col.upsert(
         documents=[doc],
         ids=[f"watch-{entry.id}"],
-        metadatas=[{"user_tag": entry.user_tag, "item_id": entry.item_id}],
+        metadatas=[{"user_tag": entry.user_tag, "item_id": int(entry.item_id)}],
     )
 
 
-def retrieve_context(question: str, user_tag: str, item_id: int | None = None) -> str:
+def _meta_item_matches(meta: dict, user_tag: str, item_id: int) -> bool:
+    if meta.get("user_tag") != user_tag:
+        return False
+    raw = meta.get("item_id")
+    if raw is None:
+        return False
+    try:
+        return int(float(raw)) == int(item_id)
+    except (TypeError, ValueError):
+        return False
+
+
+def full_watchlist_section_from_db(db, user_tag: str, current_item_id: int | None) -> str:
+    """One line per watched item with target + current price; mark which item the user is viewing."""
+    from .models import Item, PriceSnapshot, WatchlistEntry
+
+    rows = (
+        db.query(WatchlistEntry)
+        .filter(WatchlistEntry.user_tag == user_tag)
+        .order_by(WatchlistEntry.created_at.desc())
+        .all()
+    )
+    if not rows:
+        return "[ALL ITEMS ON USER WATCHLIST]\nNo items saved."
+
+    seen: set[int] = set()
+    lines: list[str] = []
+    for entry in rows:
+        if entry.item_id in seen:
+            continue
+        seen.add(entry.item_id)
+
+        it = db.query(Item).filter(Item.id == entry.item_id).first()
+        name = it.name if it else f"Item #{entry.item_id}"
+        latest = (
+            db.query(PriceSnapshot)
+            .filter(PriceSnapshot.item_id == entry.item_id)
+            .order_by(PriceSnapshot.captured_at.desc())
+            .first()
+        )
+        cur = f"${latest.price:.2f}" if latest else "unknown"
+        viewing = (
+            " — THIS IS THE ITEM THE USER IS VIEWING NOW"
+            if current_item_id is not None and entry.item_id == current_item_id
+            else ""
+        )
+        lines.append(
+            f"- {name}: target ${entry.target_price:.2f}, current price {cur}{viewing}"
+        )
+
+    body = "\n".join(lines)
+    return f"[ALL ITEMS ON USER WATCHLIST]\n{body}"
+
+
+def watchlist_section_from_db(db, user_tag: str, item_id: int) -> str:
+    """Live SQLite lookup — always matches what the user just saved (source of truth for chat)."""
+    from .models import Item, PriceSnapshot, WatchlistEntry
+
+    entry = (
+        db.query(WatchlistEntry)
+        .filter(WatchlistEntry.user_tag == user_tag, WatchlistEntry.item_id == item_id)
+        .order_by(WatchlistEntry.created_at.desc())
+        .first()
+    )
+    if entry is None:
+        return "[USER WATCHLIST FOR THIS ITEM]\nNo watchlist entry set for this item."
+
+    item = db.query(Item).filter(Item.id == item_id).first()
+    latest = (
+        db.query(PriceSnapshot)
+        .filter(PriceSnapshot.item_id == item_id)
+        .order_by(PriceSnapshot.captured_at.desc())
+        .first()
+    )
+    current_price = latest.price if latest else None
+    doc = _watchlist_doc(
+        entry,
+        item.name if item else f"Item #{item_id}",
+        current_price,
+    )
+    return f"[USER WATCHLIST FOR THIS ITEM]\n{doc}"
+
+
+def retrieve_context(
+    question: str,
+    user_tag: str,
+    item_id: int | None = None,
+    db=None,
+) -> str:
     """
     Retrieve relevant context chunks for a user question.
     Each section is clearly labeled so the LLM knows what it represents.
@@ -254,21 +343,30 @@ def retrieve_context(question: str, user_tag: str, item_id: int | None = None) -
         except Exception:
             pass
 
-    # 2. User's watchlist entry for this specific item only
-    watchlist_section = "[USER WATCHLIST FOR THIS ITEM]\nNo watchlist entry set for this item."
+    # 2. User's watchlist — prefer live DB (instant after POST /watchlist); else Chroma fallback
     if item_id is not None:
-        try:
-            all_watch = _watch_col.get(include=["documents", "metadatas"])
-            for doc, meta in zip(
-                all_watch["documents"],
-                all_watch["metadatas"] or [{}] * len(all_watch["documents"])
-            ):
-                if meta.get("user_tag") == user_tag and meta.get("item_id") == item_id:
-                    watchlist_section = f"[USER WATCHLIST FOR THIS ITEM]\n{doc}"
-                    break
-        except Exception:
-            pass
+        if db is not None:
+            watchlist_section = watchlist_section_from_db(db, user_tag, item_id)
+        else:
+            watchlist_section = "[USER WATCHLIST FOR THIS ITEM]\nNo watchlist entry set for this item."
+            try:
+                all_watch = _watch_col.get(include=["documents", "metadatas"])
+                for doc, meta in zip(
+                    all_watch["documents"],
+                    all_watch["metadatas"] or [{}] * len(all_watch["documents"]),
+                ):
+                    if _meta_item_matches(meta or {}, user_tag, item_id):
+                        watchlist_section = f"[USER WATCHLIST FOR THIS ITEM]\n{doc}"
+                        break
+            except Exception:
+                pass
+    else:
+        watchlist_section = "[USER WATCHLIST FOR THIS ITEM]\nNo watchlist entry set for this item."
     sections.append(watchlist_section)
+
+    # 2b. Full watchlist (all items) so the model can answer "what am I watching?" from Mac detail page
+    if db is not None:
+        sections.append(full_watchlist_section_from_db(db, user_tag, item_id))
 
     # 3. Relevant sale events (top 2)
     try:

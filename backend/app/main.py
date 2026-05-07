@@ -127,14 +127,37 @@ def get_item_history(item_id: int, db: Session = Depends(get_db)):
 
 @app.post("/watchlist", response_model=WatchlistOut)
 def add_watchlist_entry(payload: WatchlistCreate, db: Session = Depends(get_db)):
-    entry = WatchlistEntry(
-        user_tag=payload.user_tag, item_id=payload.item_id, target_price=payload.target_price
+    existing_rows = (
+        db.query(WatchlistEntry)
+        .filter(
+            WatchlistEntry.user_tag == payload.user_tag,
+            WatchlistEntry.item_id == payload.item_id,
+        )
+        .order_by(WatchlistEntry.created_at.desc())
+        .all()
     )
-    db.add(entry)
-    db.commit()
-    db.refresh(entry)
 
-    # Index into RAG immediately so AI knows about this target
+    if existing_rows:
+        entry = existing_rows[0]
+        entry.target_price = payload.target_price
+        for dup in existing_rows[1:]:
+            try:
+                from .rag import _watch_col
+
+                _watch_col.delete(ids=[f"watch-{dup.id}"])
+            except Exception:
+                pass
+            db.delete(dup)
+        db.commit()
+        db.refresh(entry)
+    else:
+        entry = WatchlistEntry(
+            user_tag=payload.user_tag, item_id=payload.item_id, target_price=payload.target_price
+        )
+        db.add(entry)
+        db.commit()
+        db.refresh(entry)
+
     item = db.query(Item).filter(Item.id == payload.item_id).first()
     latest = (
         db.query(PriceSnapshot)
@@ -199,6 +222,7 @@ def chat(item_id: int, payload: ChatRequest, db: Session = Depends(get_db)):
         question=payload.message,
         user_tag=payload.user_tag,
         item_id=item_id,
+        db=db,
     )
 
     system_prompt = f"""You are EduWatch AI, a smart shopping assistant that helps students decide when to buy products.
@@ -210,10 +234,12 @@ Below is structured context retrieved from our knowledge base. Each section is l
 {rag_context}
 
 Guidelines:
-- Focus only on {item.name}. Do not mention other products unless the user explicitly asks.
-- For watchlist information, use ONLY what is in [USER WATCHLIST FOR THIS ITEM]. If it says "No watchlist entry set", do not mention any target price or watchlist.
-- For price data, use ONLY what is in [CURRENT ITEM PRICE DATA]. Do not invent prices.
-- For sale timing advice, use [RELEVANT SALE EVENTS] and [TODAY'S DATE] to reason about how far away sales are.
+- Primary focus: help with {item.name} (the page they are on). Price and buy/wait advice should use [CURRENT ITEM PRICE DATA].
+- [ALL ITEMS ON USER WATCHLIST] lists every item they saved a target for — use it when they ask what they are watching, which item to prioritize, or to compare across items. Do not ignore other rows in that section.
+- [USER WATCHLIST FOR THIS ITEM] is the detailed row for the current product only.
+- If [USER WATCHLIST FOR THIS ITEM] says no entry but [ALL ITEMS...] includes this product, trust [ALL ITEMS...].
+- Do not invent prices; use the labeled sections only.
+- For sale timing, use [RELEVANT SALE EVENTS] and [TODAY'S DATE].
 - Be concise and friendly — 2-4 sentences unless more detail is needed."""
 
     messages = [{"role": "system", "content": system_prompt}]

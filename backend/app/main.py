@@ -152,6 +152,21 @@ def add_watchlist_entry(payload: WatchlistCreate, db: Session = Depends(get_db))
     return entry
 
 
+@app.delete("/watchlist/{entry_id}", status_code=204)
+def delete_watchlist_entry(entry_id: int, db: Session = Depends(get_db)):
+    entry = db.query(WatchlistEntry).filter(WatchlistEntry.id == entry_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Watchlist entry not found")
+    db.delete(entry)
+    db.commit()
+    # Remove from ChromaDB too
+    try:
+        from .rag import _watch_col
+        _watch_col.delete(ids=[f"watch-{entry_id}"])
+    except Exception:
+        pass
+
+
 @app.get("/watchlist/{user_tag}", response_model=list[WatchlistOut])
 def get_watchlist(user_tag: str, db: Session = Depends(get_db)):
     entries = (
@@ -187,18 +202,20 @@ def chat(item_id: int, payload: ChatRequest, db: Session = Depends(get_db)):
         item_id=item_id,
     )
 
-    system_prompt = f"""You are EduWatch AI, a smart shopping assistant that helps students decide when to buy products based on real price history data.
+    system_prompt = f"""You are EduWatch AI, a smart shopping assistant that helps students decide when to buy products.
 
-You have access to the following personalized context retrieved from our knowledge base:
+The user is currently viewing: {item.name}.
+
+Below is structured context retrieved from our knowledge base. Each section is labeled — read them carefully and only use information from the correct section:
 
 {rag_context}
 
 Guidelines:
-- Be concise, friendly, and specific — 2-4 sentences unless more detail is needed.
-- Ground your answers in the price data provided. Do not make up prices.
-- If the user has a watchlist target for this item, reference it in your answer.
-- If the current price is at or near the all-time low, say so clearly.
-- If asked what the user wants to buy, refer to their watchlist entries."""
+- Focus only on {item.name}. Do not mention other products unless the user explicitly asks.
+- For watchlist information, use ONLY what is in [USER WATCHLIST FOR THIS ITEM]. If it says "No watchlist entry set", do not mention any target price or watchlist.
+- For price data, use ONLY what is in [CURRENT ITEM PRICE DATA]. Do not invent prices.
+- For sale timing advice, use [RELEVANT SALE EVENTS] and [TODAY'S DATE] to reason about how far away sales are.
+- Be concise and friendly — 2-4 sentences unless more detail is needed."""
 
     messages = [{"role": "system", "content": system_prompt}]
     for msg in payload.history:

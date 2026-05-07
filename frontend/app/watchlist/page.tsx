@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { fetchItem, getWatchlist } from "@/lib/api";
+import { fetchItem, getWatchlist, removeWatchlistEntry } from "@/lib/api";
 import { ItemDetail, WatchlistEntry } from "@/types";
 
 const USER_TAG = "demo-student";
@@ -18,6 +18,7 @@ export default function WatchlistPage() {
   const [entries, setEntries] = useState<EnrichedEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [removingId, setRemovingId] = useState<number | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -44,6 +45,16 @@ export default function WatchlistPage() {
     };
     load();
   }, []);
+
+  const onRemove = async (entryId: number) => {
+    setRemovingId(entryId);
+    try {
+      await removeWatchlistEntry(entryId);
+      setEntries((prev) => prev.filter((e) => e.id !== entryId));
+    } finally {
+      setRemovingId(null);
+    }
+  };
 
   const getLatestPrice = (item?: ItemDetail): number | null => {
     if (!item || item.price_history.length === 0) return null;
@@ -104,11 +115,20 @@ export default function WatchlistPage() {
                       })}
                     </p>
                   </div>
-                  {met && (
-                    <span className="flex-shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                      Target reached
-                    </span>
-                  )}
+                  <div className="flex flex-shrink-0 items-center gap-2">
+                    {met && (
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                        Target reached
+                      </span>
+                    )}
+                    <button
+                      onClick={() => onRemove(entry.id)}
+                      disabled={removingId === entry.id}
+                      className="rounded-lg px-2 py-1 text-xs font-medium text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                    >
+                      {removingId === entry.id ? "Removing…" : "Remove"}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">

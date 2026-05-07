@@ -216,7 +216,11 @@ def build_index(db) -> None:
         )
         current_price = latest.price if latest else None
         doc = _watchlist_doc(entry, item_map.get(entry.item_id, f"Item #{entry.item_id}"), current_price)
-        _watch_col.upsert(documents=[doc], ids=[f"watch-{entry.id}"])
+        _watch_col.upsert(
+            documents=[doc],
+            ids=[f"watch-{entry.id}"],
+            metadatas=[{"user_tag": entry.user_tag, "item_id": entry.item_id}],
+        )
 
     build_event_index()
     print(f"[RAG] Indexed {len(items)} items and {len(entries)} watchlist entries.")
@@ -225,52 +229,54 @@ def build_index(db) -> None:
 def upsert_watchlist_entry(entry, item_name: str, current_price: float | None) -> None:
     """Call this immediately after a new watchlist entry is saved."""
     doc = _watchlist_doc(entry, item_name, current_price)
-    _watch_col.upsert(documents=[doc], ids=[f"watch-{entry.id}"])
+    _watch_col.upsert(
+        documents=[doc],
+        ids=[f"watch-{entry.id}"],
+        metadatas=[{"user_tag": entry.user_tag, "item_id": entry.item_id}],
+    )
 
 
 def retrieve_context(question: str, user_tag: str, item_id: int | None = None) -> str:
     """
     Retrieve relevant context chunks for a user question.
-    Always includes the current item (if item_id given), user's watchlist, and relevant sale events.
+    Each section is clearly labeled so the LLM knows what it represents.
     """
     from datetime import date
     today = date.today().strftime("%B %d, %Y")
-    parts: list[str] = [f"Today's date: {today}."]
+    sections: list[str] = [f"[TODAY'S DATE]\n{today}"]
 
-    # 1. Always include the specific item being viewed
+    # 1. Current item price data
     if item_id is not None:
         try:
             specific = _item_col.get(ids=[f"item-{item_id}"])
             if specific["documents"]:
-                parts.append(specific["documents"][0])
+                sections.append(f"[CURRENT ITEM PRICE DATA]\n{specific['documents'][0]}")
         except Exception:
             pass
 
-    # 2. Semantic search over other items (top 1, skip if already included)
-    try:
-        item_results = _item_col.query(query_texts=[question], n_results=2)
-        for doc in item_results["documents"][0]:
-            if doc not in parts:
-                parts.append(doc)
-    except Exception:
-        pass
+    # 2. User's watchlist entry for this specific item only
+    watchlist_section = "[USER WATCHLIST FOR THIS ITEM]\nNo watchlist entry set for this item."
+    if item_id is not None:
+        try:
+            all_watch = _watch_col.get(include=["documents", "metadatas"])
+            for doc, meta in zip(
+                all_watch["documents"],
+                all_watch["metadatas"] or [{}] * len(all_watch["documents"])
+            ):
+                if meta.get("user_tag") == user_tag and meta.get("item_id") == item_id:
+                    watchlist_section = f"[USER WATCHLIST FOR THIS ITEM]\n{doc}"
+                    break
+        except Exception:
+            pass
+    sections.append(watchlist_section)
 
-    # 3. User's watchlist entries
-    try:
-        watch_results = _watch_col.query(query_texts=[question], n_results=4)
-        for doc in watch_results["documents"][0]:
-            if user_tag in doc and doc not in parts:
-                parts.append(doc)
-    except Exception:
-        pass
-
-    # 4. Relevant sale events (top 2)
+    # 3. Relevant sale events (top 2)
     try:
         event_results = _events_col.query(query_texts=[question], n_results=2)
-        for doc in event_results["documents"][0]:
-            if doc not in parts:
-                parts.append(doc)
+        event_docs = event_results["documents"][0]
+        if event_docs:
+            sections.append(f"[RELEVANT SALE EVENTS]\n" + "\n\n".join(event_docs))
     except Exception:
         pass
 
-    return "\n\n---\n\n".join(parts) if parts else "No relevant context found."
+    return "\n\n---\n\n".join(sections)

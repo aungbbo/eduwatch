@@ -39,6 +39,11 @@ export async function addWatchlist(payload: {
   return res.json();
 }
 
+export async function removeWatchlistEntry(entryId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/watchlist/${entryId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to remove watchlist entry");
+}
+
 export async function getWatchlist(userTag: string): Promise<WatchlistEntry[]> {
   const res = await fetch(`${API_BASE}/watchlist/${userTag}`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch watchlist");

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_db
 from .models import Item, PriceSnapshot, WatchlistEntry
+from .notifications import send_price_alert_email
 from .rag import build_index, retrieve_context, upsert_watchlist_entry
 from .schemas import ItemDetailOut, ItemOut, WatchlistCreate, WatchlistOut
 
@@ -170,6 +171,18 @@ def add_watchlist_entry(payload: WatchlistCreate, db: Session = Depends(get_db))
         item_name=item.name if item else f"Item #{payload.item_id}",
         current_price=latest.price if latest else None,
     )
+
+    lowest_price = (
+        db.query(func.min(PriceSnapshot.price))
+        .filter(PriceSnapshot.item_id == payload.item_id)
+        .scalar()
+    )
+    if lowest_price is not None and lowest_price <= payload.target_price:
+        send_price_alert_email(
+            item_name=item.name if item else f"Item #{payload.item_id}",
+            target_price=payload.target_price,
+            current_price=lowest_price,
+        )
 
     return entry
 

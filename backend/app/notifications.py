@@ -48,10 +48,7 @@ def send_price_alert_email(
         </table>
       </div>
 
-      <p style="margin: 20px 0 0; color: #64748b; font-size: 13px;">— EduWatch demo notification</p>
-
-      <hr style="margin: 28px 0 16px; border: none; border-top: 1px solid #e2e8f0;" />
-      <p style="margin: 0; text-align: center; font-size: 20px; font-style: italic; color: #1e3a8a; font-weight: 600; letter-spacing: 0.3px;">Smarter shopping for students.</p>
+      <p style="margin: 20px 0 0; color: #64748b; font-size: 13px;">— EduWatch notification</p>
     </div>
     """.strip()
 

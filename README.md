@@ -34,12 +34,13 @@ Frontend URL: `http://localhost:3000`
 - `GET /items/{id}`
 - `GET /items/{id}/history`
 - `POST /watchlist`
+- `DELETE /watchlist/{entry_id}`
 - `GET /watchlist/{user_tag}`
-- `POST /insights/{item_id}`
+- `POST /chat/{item_id}` (RAG-augmented LLM chat; requires `GROQ_API_KEY`)
 
 ## 4) Demo flow
 
 1. Open dashboard and filter by category/budget.
 2. Open an item to see price history chart.
 3. Set target price in watchlist.
-4. Generate insight for buy-now vs wait recommendation.
+4. Ask the AI chat for a buy-now vs wait recommendation.

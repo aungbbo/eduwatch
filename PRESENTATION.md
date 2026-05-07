@@ -24,8 +24,8 @@
 ## Slide 4 - API and Data Flow
 - Main endpoints:
   - `GET /items`, `GET /items/{id}`, `GET /items/{id}/history`
-  - `POST /watchlist`, `GET /watchlist/{user_tag}`
-  - `POST /insights/{item_id}`, `GET /health`
+  - `POST /watchlist`, `DELETE /watchlist/{entry_id}`, `GET /watchlist/{user_tag}`
+  - `POST /chat/{item_id}`, `GET /health`
 - Data is seeded with realistic multi-day price snapshots for demo items.
 - Dashboard -> item detail -> chart -> watchlist/insight forms a complete user journey.
 - API docs available through FastAPI Swagger (`/docs`) for quick testing.
@@ -163,7 +163,7 @@ The long-term impact is helping students make smarter purchase decisions and red
 ## Slide 4 - API and Product Flow
 **Title:** How Data Moves Through EduWatch  
 **Bullets:**
-- Core endpoints: `/items`, `/items/{id}`, `/watchlist`, `/insights/{item_id}`.
+- Core endpoints: `/items`, `/items/{id}`, `/watchlist`, `/chat/{item_id}`.
 - Seeded dataset provides realistic multi-day price snapshots.
 - User flow: dashboard -> detail chart -> target watchlist -> recommendation.
 - FastAPI docs at `/docs` support quick testing and validation.

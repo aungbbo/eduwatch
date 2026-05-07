@@ -1,4 +1,4 @@
-import { Item, ItemDetail, WatchlistEntry } from "@/types";
+import { Insight, Item, ItemDetail, WatchlistEntry } from "@/types";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000";
@@ -45,8 +45,11 @@ export async function getWatchlist(userTag: string): Promise<WatchlistEntry[]> {
   return res.json();
 }
 
-export async function getInsight(itemId: number): Promise<{ recommendation: string }> {
+export async function getInsight(itemId: number): Promise<Insight> {
   const res = await fetch(`${API_BASE}/insights/${itemId}`, { method: "POST" });
-  if (!res.ok) throw new Error("Failed to fetch insight");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail || "Failed to fetch insight");
+  }
   return res.json();
 }

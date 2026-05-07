@@ -6,7 +6,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { addWatchlist, fetchItem, getInsight } from "@/lib/api";
-import { ItemDetail } from "@/types";
+import { Insight, ItemDetail } from "@/types";
 
 export default function ItemDetailPage() {
   const params = useParams<{ id: string }>();
@@ -14,7 +14,9 @@ export default function ItemDetailPage() {
 
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [targetPrice, setTargetPrice] = useState("");
-  const [insight, setInsight] = useState("");
+  const [insight, setInsight] = useState<Insight | null>(null);
+  const [insightError, setInsightError] = useState("");
+  const [insightLoading, setInsightLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -91,8 +93,17 @@ export default function ItemDetailPage() {
   };
 
   const onGenerateInsight = async () => {
-    const data = await getInsight(itemId);
-    setInsight(data.recommendation);
+    setInsightLoading(true);
+    setInsightError("");
+    try {
+      const data = await getInsight(itemId);
+      setInsight(data);
+    } catch (err) {
+      setInsightError(err instanceof Error ? err.message : "Could not generate prediction.");
+      setInsight(null);
+    } finally {
+      setInsightLoading(false);
+    }
   };
 
   if (loading) return <main className="p-6 text-slate-700">Loading item...</main>;
@@ -209,18 +220,110 @@ export default function ItemDetailPage() {
         </form>
 
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="font-semibold text-slate-900">AI recommendation</h3>
-          <p className="mt-1 text-sm text-slate-600">A quick buy-now or wait suggestion.</p>
+          <h3 className="font-semibold text-slate-900">Price prediction</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            XGBoost forecast trained on this item&apos;s full history.
+          </p>
           <button
             onClick={onGenerateInsight}
-            className="mt-3 rounded-xl bg-sky-600 px-3 py-2 font-medium text-white transition hover:bg-sky-700"
+            disabled={insightLoading}
+            className="mt-3 rounded-xl bg-sky-600 px-3 py-2 font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-sky-400"
             type="button"
           >
-            Generate
+            {insightLoading ? "Predicting..." : "Generate"}
           </button>
-          <p className="mt-3 rounded-lg bg-slate-50 p-3 text-slate-700">
-            {insight || "No recommendation yet."}
-          </p>
+
+          {insightError && (
+            <p className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{insightError}</p>
+          )}
+
+          {!insight && !insightError && !insightLoading && (
+            <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+              No prediction yet. Click Generate to run the model.
+            </p>
+          )}
+
+          {insight && (
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Predicted next price</p>
+                  <p className="mt-1 text-2xl font-bold text-indigo-700">
+                    ${insight.predicted_price.toFixed(2)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    vs current ${insight.current_price.toFixed(2)} ·{" "}
+                    {(((insight.predicted_price - insight.current_price) / insight.current_price) * 100).toFixed(2)}%
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full px-3 py-1 text-sm font-semibold ${
+                    insight.advice.action === "BUY"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-amber-100 text-amber-700"
+                  }`}
+                >
+                  {insight.advice.action} · {insight.advice.confidence}%
+                </span>
+              </div>
+
+              <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">{insight.advice.reason}</p>
+
+              {insight.advice.signals.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {insight.advice.signals.map((s) => (
+                    <span
+                      key={s}
+                      className="rounded-full bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700"
+                    >
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-slate-500">All-time low</p>
+                  <p className="font-semibold text-emerald-700">${insight.statistics.all_time_low.toFixed(2)}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-slate-500">30-day avg</p>
+                  <p className="font-semibold text-slate-800">${insight.statistics.avg_30d.toFixed(2)}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-slate-500">vs 30d avg</p>
+                  <p
+                    className={`font-semibold ${
+                      insight.statistics.pct_vs_30d_avg <= 0 ? "text-emerald-700" : "text-rose-700"
+                    }`}
+                  >
+                    {insight.statistics.pct_vs_30d_avg.toFixed(2)}%
+                  </p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-slate-500">Data points</p>
+                  <p className="font-semibold text-slate-800">{insight.data_points}</p>
+                </div>
+              </div>
+
+              {Object.keys(insight.feature_importance).length > 0 && (
+                <details className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
+                  <summary className="cursor-pointer font-medium text-slate-800">
+                    Top features driving the prediction
+                  </summary>
+                  <ul className="mt-2 space-y-1">
+                    {Object.entries(insight.feature_importance).map(([name, score]) => (
+                      <li key={name} className="flex justify-between">
+                        <span className="font-mono text-slate-600">{name}</span>
+                        <span className="font-semibold text-slate-800">{score.toFixed(4)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          )}
         </div>
       </section>
     </main>

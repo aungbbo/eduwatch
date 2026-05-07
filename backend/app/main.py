@@ -1,9 +1,12 @@
+from datetime import datetime
+
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_db
+from .ml import compute_statistics, get_advice, get_feature_importance, train_and_predict
 from .models import Item, PriceSnapshot, WatchlistEntry
 from .schemas import ItemDetailOut, ItemOut, WatchlistCreate, WatchlistOut
 
@@ -128,22 +131,51 @@ def get_watchlist(user_tag: str, db: Session = Depends(get_db)):
 
 
 @app.post("/insights/{item_id}")
-def simple_insight(item_id: int, db: Session = Depends(get_db)):
+def predict_insight(item_id: int, db: Session = Depends(get_db)):
+    item = db.query(Item).filter(Item.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
     history = (
         db.query(PriceSnapshot)
         .filter(PriceSnapshot.item_id == item_id)
-        .order_by(PriceSnapshot.captured_at.desc())
-        .limit(7)
+        .order_by(PriceSnapshot.captured_at.asc())
         .all()
     )
     if not history:
-        return {"recommendation": "No data yet. Track this item for a few days."}
+        raise HTTPException(status_code=400, detail="No price history for this item.")
 
-    prices = [h.price for h in history]
-    latest = prices[0]
-    average = sum(prices) / len(prices)
-    if latest <= average * 0.95:
-        recommendation = "Price is below recent average. Good time to buy."
-    else:
-        recommendation = "Price is near or above recent average. Consider waiting."
-    return {"recommendation": recommendation, "latest_price": latest, "recent_average": round(average, 2)}
+    daily: dict[str, tuple[float, datetime]] = {}
+    for h in history:
+        key = h.captured_at.date().isoformat()
+        if key not in daily or h.price < daily[key][0]:
+            daily[key] = (h.price, datetime(h.captured_at.year, h.captured_at.month, h.captured_at.day))
+
+    sorted_days = sorted(daily.items(), key=lambda kv: kv[0])
+    prices = [v[0] for _, v in sorted_days]
+    dates = [v[1] for _, v in sorted_days]
+
+    if len(prices) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not enough data. Need at least 10 daily price points, have {len(prices)}.",
+        )
+
+    predicted_price = train_and_predict(prices, dates)
+    if predicted_price is None:
+        predicted_price = round(sum(prices[-7:]) / min(7, len(prices)), 2)
+
+    current_price = prices[-1]
+    advice = get_advice(current_price, predicted_price, prices)
+    statistics = compute_statistics(prices)
+    feature_importance = get_feature_importance(prices, dates)
+
+    return {
+        "item_id": item.id,
+        "current_price": current_price,
+        "predicted_price": predicted_price,
+        "advice": advice,
+        "statistics": statistics,
+        "feature_importance": feature_importance,
+        "data_points": len(prices),
+    }

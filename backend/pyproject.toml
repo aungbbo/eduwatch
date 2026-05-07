@@ -9,5 +9,9 @@ dependencies = [
   "sqlalchemy",
   "pydantic",
   "python-dotenv",
+  "xgboost",
+  "pandas",
+  "numpy",
+  "scikit-learn",
 ]
 

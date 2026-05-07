@@ -65,21 +65,21 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto max-w-6xl p-6 md:p-8">
-      <section className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-700 via-blue-700 to-sky-600 p-6 text-white shadow-lg md:p-8">
+      <section className="rounded-3xl border border-sky-100 bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50 p-6 text-slate-900 shadow-sm md:p-8">
         <h1 className="text-2xl font-semibold md:text-3xl">Save more on student essentials.</h1>
-        <p className="mt-1 text-sky-200 text-sm">Track prices, set targets, and decide when to buy.</p>
+        <p className="mt-1 text-sm text-slate-600">Track prices, set targets, and decide when to buy.</p>
         <div className="mt-6 grid gap-3 md:grid-cols-3">
-          <div className="rounded-2xl bg-white/15 p-4 backdrop-blur-sm">
-            <p className="text-xs text-blue-100">Items</p>
-            <p className="mt-1 text-2xl font-semibold">{items.length}</p>
+          <div className="rounded-2xl border border-sky-100 bg-white/80 p-4 backdrop-blur-sm">
+            <p className="text-xs text-slate-500">Items</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">{items.length}</p>
           </div>
-          <div className="rounded-2xl bg-white/15 p-4 backdrop-blur-sm">
-            <p className="text-xs text-blue-100">Average price</p>
-            <p className="mt-1 text-2xl font-semibold">{formatCurrency(averagePrice ?? undefined)}</p>
+          <div className="rounded-2xl border border-sky-100 bg-white/80 p-4 backdrop-blur-sm">
+            <p className="text-xs text-slate-500">Average price</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">{formatCurrency(averagePrice ?? undefined)}</p>
           </div>
-          <div className="rounded-2xl bg-white/15 p-4 backdrop-blur-sm">
-            <p className="text-xs text-blue-100">Best deal</p>
-            <p className="mt-1 text-base font-semibold">
+          <div className="rounded-2xl border border-sky-100 bg-white/80 p-4 backdrop-blur-sm">
+            <p className="text-xs text-slate-500">Best deal</p>
+            <p className="mt-1 text-base font-semibold text-slate-900">
               {cheapestItem ? `${cheapestItem.name} (${formatCurrency(cheapestItem.current_price)})` : "No pricing data"}
             </p>
           </div>

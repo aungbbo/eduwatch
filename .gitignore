@@ -8,3 +8,4 @@ __pycache__/
 frontend/.next/
 backend/eduwatch.db
 backend/.env
+backend/chroma_db/

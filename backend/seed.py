@@ -18,7 +18,7 @@ ITEMS_DATA = [
         "name": "MacBook Pro M4",
         "category": "gadgets",
         "description": "Apple MacBook Pro 14-inch with M4 chip",
-        "stores": {"Amazon": 0, "Best Buy": 10.00, "Apple Store": 0},
+        "stores": {"Amazon": 0},
         "price_history": [
             (date(2024, 10, 30), date(2024, 11, 28), 1599.00),
             (date(2024, 11, 29), date(2024, 12, 2),  1499.00),
@@ -38,7 +38,7 @@ ITEMS_DATA = [
         "name": "Apple Watch SE 3",
         "category": "gadgets",
         "description": "Apple Watch SE 3rd generation with GPS",
-        "stores": {"Amazon": 0, "Best Buy": 5.00, "Apple Store": 0},
+        "stores": {"Amazon": 0},
         "price_history": [
             (date(2025, 9, 19),  date(2025, 10, 31), 249.00),
             (date(2025, 11, 1),  date(2025, 11, 27), 239.00),
@@ -60,7 +60,7 @@ ITEMS_DATA = [
         "name": "Sony WH-1000XM5",
         "category": "gadgets",
         "description": "Sony WH-1000XM5 wireless noise-cancelling headphones",
-        "stores": {"Amazon": 0, "Best Buy": 10.00, "Sony Store": 0},
+        "stores": {"Amazon": 0},
         "price_history": [
             (date(2024, 5, 6),   date(2024, 6, 15),  399.99),
             (date(2024, 6, 16),  date(2024, 7, 10),  349.99),
@@ -81,7 +81,7 @@ ITEMS_DATA = [
         "name": "Texas Instruments TI-84 Plus",
         "category": "gadgets",
         "description": "TI-84 Plus graphing calculator for math and science",
-        "stores": {"Amazon": 0, "Walmart": -5.00, "Staples": 5.00},
+        "stores": {"Amazon": 0},
         "price_history": [
             (date(2024, 5, 6),   date(2024, 8, 15),  119.99),
             (date(2024, 8, 16),  date(2024, 9, 15),  99.99),

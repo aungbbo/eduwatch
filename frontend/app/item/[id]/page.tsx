@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import { addWatchlist, fetchItem, getInsight } from "@/lib/api";
+import { addWatchlist, fetchItem, sendChat } from "@/lib/api";
 import { ItemDetail } from "@/types";
+
+type ChatMessage = { role: "user" | "assistant"; content: string };
 
 export default function ItemDetailPage() {
   const params = useParams<{ id: string }>();
@@ -14,10 +16,15 @@ export default function ItemDetailPage() {
 
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [targetPrice, setTargetPrice] = useState("");
-  const [insight, setInsight] = useState("");
-  const [message, setMessage] = useState("");
+  const [watchlistMsg, setWatchlistMsg] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Chat state
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -26,16 +33,18 @@ export default function ItemDetailPage() {
       try {
         const data = await fetchItem(itemId);
         setItem(data);
-      } catch (err) {
+      } catch {
         setError("Could not load item details.");
       } finally {
         setLoading(false);
       }
     };
-    if (!Number.isNaN(itemId)) {
-      load();
-    }
+    if (!Number.isNaN(itemId)) load();
   }, [itemId]);
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
 
   // Aggregate: one data point per day using the lowest price across all stores
   const dailyPrices = useMemo(() => {
@@ -58,7 +67,6 @@ export default function ItemDetailPage() {
   }, [item]);
 
   const chartData = useMemo(() => {
-    // Deduplicate consecutive identical prices for a clean step chart
     const deduped: { date: string; price: number }[] = [];
     for (const point of dailyPrices) {
       if (deduped.length === 0 || deduped[deduped.length - 1].price !== point.price) {
@@ -84,15 +92,35 @@ export default function ItemDetailPage() {
     await addWatchlist({
       user_tag: "demo-student",
       item_id: itemId,
-      target_price: Number(targetPrice)
+      target_price: Number(targetPrice),
     });
-    setMessage("Added to watchlist for demo-student.");
+    setWatchlistMsg("Added to watchlist.");
     setTargetPrice("");
   };
 
-  const onGenerateInsight = async () => {
-    const data = await getInsight(itemId);
-    setInsight(data.recommendation);
+  const onSendChat = async () => {
+    const text = chatInput.trim();
+    if (!text || chatLoading) return;
+    setChatInput("");
+    const userMsg: ChatMessage = { role: "user", content: text };
+    const newHistory = [...chatHistory, userMsg];
+    setChatHistory(newHistory);
+    setChatLoading(true);
+    try {
+      const { reply } = await sendChat(itemId, text, chatHistory);
+      setChatHistory([...newHistory, { role: "assistant", content: reply }]);
+    } catch {
+      setChatHistory([...newHistory, { role: "assistant", content: "Sorry, something went wrong. Please try again." }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const onChatKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onSendChat();
+    }
   };
 
   if (loading) return <main className="p-6 text-slate-700">Loading item...</main>;
@@ -124,7 +152,7 @@ export default function ItemDetailPage() {
             <div className="rounded-xl bg-slate-50 p-3">
               <p className="text-xs text-slate-500">Trend</p>
               <p className={`mt-1 font-semibold ${priceStats.delta <= 0 ? "text-emerald-700" : "text-amber-700"}`}>
-                {priceStats.delta <= 0 ? "Dropping" : "Rising"} ({priceStats.delta.toFixed(2)})
+                {priceStats.delta <= 0 ? "Dropping" : "Rising"} ({priceStats.delta >= 0 ? "+" : ""}{priceStats.delta.toFixed(2)})
               </p>
             </div>
           </div>
@@ -187,6 +215,7 @@ export default function ItemDetailPage() {
       </section>
 
       <section className="mt-6 grid gap-4 md:grid-cols-2">
+        {/* Watchlist form */}
         <form onSubmit={onAddWatchlist} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="font-semibold text-slate-900">Target price</h3>
           <p className="mt-1 text-sm text-slate-600">Save this item at your ideal price.</p>
@@ -195,7 +224,7 @@ export default function ItemDetailPage() {
             min="1"
             step="0.01"
             className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 outline-none ring-sky-200 transition focus:ring-2"
-            placeholder="e.g. 49.99"
+            placeholder="e.g. 1199.99"
             value={targetPrice}
             onChange={(e) => setTargetPrice(e.target.value)}
           />
@@ -205,22 +234,64 @@ export default function ItemDetailPage() {
           >
             Save target
           </button>
-          {message && <p className="mt-2 text-sm font-medium text-emerald-700">{message}</p>}
+          {watchlistMsg && <p className="mt-2 text-sm font-medium text-emerald-700">{watchlistMsg}</p>}
         </form>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="font-semibold text-slate-900">AI recommendation</h3>
-          <p className="mt-1 text-sm text-slate-600">A quick buy-now or wait suggestion.</p>
-          <button
-            onClick={onGenerateInsight}
-            className="mt-3 rounded-xl bg-sky-600 px-3 py-2 font-medium text-white transition hover:bg-sky-700"
-            type="button"
-          >
-            Generate
-          </button>
-          <p className="mt-3 rounded-lg bg-slate-50 p-3 text-slate-700">
-            {insight || "No recommendation yet."}
-          </p>
+        {/* AI Chat */}
+        <div className="flex flex-col rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="font-semibold text-slate-900">Ask AI</h3>
+          <p className="mt-1 text-sm text-slate-600">Ask about price trends, best time to buy, and more.</p>
+
+          <div className="mt-3 flex flex-1 flex-col gap-2 overflow-y-auto max-h-64 min-h-[120px] rounded-xl bg-slate-50 p-3">
+            {chatHistory.length === 0 && (
+              <p className="text-xs text-slate-400 text-center mt-4">
+                Try: "Is now a good time to buy?" or "When was the lowest price?"
+              </p>
+            )}
+            {chatHistory.map((msg, i) => (
+              <div
+                key={i}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <p
+                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                    msg.role === "user"
+                      ? "bg-indigo-600 text-white"
+                      : "bg-white border border-slate-200 text-slate-700"
+                  }`}
+                >
+                  {msg.content}
+                </p>
+              </div>
+            ))}
+            {chatLoading && (
+              <div className="flex justify-start">
+                <p className="rounded-2xl bg-white border border-slate-200 px-3 py-2 text-sm text-slate-400">
+                  Thinking...
+                </p>
+              </div>
+            )}
+            <div ref={chatBottomRef} />
+          </div>
+
+          <div className="mt-3 flex gap-2">
+            <input
+              type="text"
+              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none ring-indigo-200 transition focus:ring-2"
+              placeholder="Ask a question..."
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={onChatKeyDown}
+              disabled={chatLoading}
+            />
+            <button
+              onClick={onSendChat}
+              disabled={chatLoading || !chatInput.trim()}
+              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-40"
+            >
+              Send
+            </button>
+          </div>
         </div>
       </section>
     </main>

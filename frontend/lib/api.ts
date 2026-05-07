@@ -45,8 +45,17 @@ export async function getWatchlist(userTag: string): Promise<WatchlistEntry[]> {
   return res.json();
 }
 
-export async function getInsight(itemId: number): Promise<{ recommendation: string }> {
-  const res = await fetch(`${API_BASE}/insights/${itemId}`, { method: "POST" });
-  if (!res.ok) throw new Error("Failed to fetch insight");
+export async function sendChat(
+  itemId: number,
+  message: string,
+  history: { role: "user" | "assistant"; content: string }[],
+  userTag = "demo-student"
+): Promise<{ reply: string }> {
+  const res = await fetch(`${API_BASE}/chat/${itemId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, history, user_tag: userTag }),
+  });
+  if (!res.ok) throw new Error("Failed to get chat response");
   return res.json();
 }

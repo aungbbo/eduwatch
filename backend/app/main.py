@@ -1,13 +1,36 @@
+import os
+from contextlib import asynccontextmanager
+from typing import Literal
+
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from groq import Groq
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_db
 from .models import Item, PriceSnapshot, WatchlistEntry
+from .rag import build_index, retrieve_context, upsert_watchlist_entry
 from .schemas import ItemDetailOut, ItemOut, WatchlistCreate, WatchlistOut
 
-app = FastAPI(title="EduWatch API", version="0.1.0")
+load_dotenv()
+groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    db = next(get_db())
+    try:
+        build_index(db)
+    finally:
+        db.close()
+    yield
+
+
+app = FastAPI(title="EduWatch API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -16,8 +39,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-Base.metadata.create_all(bind=engine)
 
 
 @app.get("/health")
@@ -113,6 +134,21 @@ def add_watchlist_entry(payload: WatchlistCreate, db: Session = Depends(get_db))
     db.add(entry)
     db.commit()
     db.refresh(entry)
+
+    # Index into RAG immediately so AI knows about this target
+    item = db.query(Item).filter(Item.id == payload.item_id).first()
+    latest = (
+        db.query(PriceSnapshot)
+        .filter(PriceSnapshot.item_id == payload.item_id)
+        .order_by(PriceSnapshot.captured_at.desc())
+        .first()
+    )
+    upsert_watchlist_entry(
+        entry,
+        item_name=item.name if item else f"Item #{payload.item_id}",
+        current_price=latest.price if latest else None,
+    )
+
     return entry
 
 
@@ -127,23 +163,53 @@ def get_watchlist(user_tag: str, db: Session = Depends(get_db)):
     return entries
 
 
-@app.post("/insights/{item_id}")
-def simple_insight(item_id: int, db: Session = Depends(get_db)):
-    history = (
-        db.query(PriceSnapshot)
-        .filter(PriceSnapshot.item_id == item_id)
-        .order_by(PriceSnapshot.captured_at.desc())
-        .limit(7)
-        .all()
-    )
-    if not history:
-        return {"recommendation": "No data yet. Track this item for a few days."}
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
 
-    prices = [h.price for h in history]
-    latest = prices[0]
-    average = sum(prices) / len(prices)
-    if latest <= average * 0.95:
-        recommendation = "Price is below recent average. Good time to buy."
-    else:
-        recommendation = "Price is near or above recent average. Consider waiting."
-    return {"recommendation": recommendation, "latest_price": latest, "recent_average": round(average, 2)}
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list[ChatMessage] = []
+    user_tag: str = "demo-student"
+
+
+@app.post("/chat/{item_id}")
+def chat(item_id: int, payload: ChatRequest, db: Session = Depends(get_db)):
+    item = db.query(Item).filter(Item.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    # Retrieve personalized context from ChromaDB
+    rag_context = retrieve_context(
+        question=payload.message,
+        user_tag=payload.user_tag,
+        item_id=item_id,
+    )
+
+    system_prompt = f"""You are EduWatch AI, a smart shopping assistant that helps students decide when to buy products based on real price history data.
+
+You have access to the following personalized context retrieved from our knowledge base:
+
+{rag_context}
+
+Guidelines:
+- Be concise, friendly, and specific — 2-4 sentences unless more detail is needed.
+- Ground your answers in the price data provided. Do not make up prices.
+- If the user has a watchlist target for this item, reference it in your answer.
+- If the current price is at or near the all-time low, say so clearly.
+- If asked what the user wants to buy, refer to their watchlist entries."""
+
+    messages = [{"role": "system", "content": system_prompt}]
+    for msg in payload.history:
+        messages.append({"role": msg.role, "content": msg.content})
+    messages.append({"role": "user", "content": payload.message})
+
+    response = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=messages,
+        max_tokens=512,
+        temperature=0.7,
+    )
+    reply = response.choices[0].message.content
+    return {"reply": reply}

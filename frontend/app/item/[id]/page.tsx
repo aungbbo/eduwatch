@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { addWatchlist, fetchItem, getInsight } from "@/lib/api";
 import { ItemDetail } from "@/types";
@@ -37,23 +37,46 @@ export default function ItemDetailPage() {
     }
   }, [itemId]);
 
-  const chartData = useMemo(() => {
+  // Aggregate: one data point per day using the lowest price across all stores
+  const dailyPrices = useMemo(() => {
     if (!item) return [];
-    return item.price_history.map((p) => ({
-      date: new Date(p.captured_at).toLocaleDateString(),
-      price: p.price
-    }));
+    const byDate = new Map<string, number>();
+    for (const p of item.price_history) {
+      const d = new Date(p.captured_at).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+      const existing = byDate.get(d);
+      if (existing === undefined || p.price < existing) {
+        byDate.set(d, p.price);
+      }
+    }
+    return Array.from(byDate.entries())
+      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .map(([date, price]) => ({ date, price }));
   }, [item]);
 
+  const chartData = useMemo(() => {
+    // Deduplicate consecutive identical prices for a clean step chart
+    const deduped: { date: string; price: number }[] = [];
+    for (const point of dailyPrices) {
+      if (deduped.length === 0 || deduped[deduped.length - 1].price !== point.price) {
+        deduped.push(point);
+      }
+    }
+    return deduped;
+  }, [dailyPrices]);
+
   const priceStats = useMemo(() => {
-    if (!item || item.price_history.length === 0) return null;
-    const prices = item.price_history.map((entry) => entry.price);
+    if (dailyPrices.length === 0) return null;
+    const prices = dailyPrices.map((p) => p.price);
     const min = Math.min(...prices);
     const max = Math.max(...prices);
     const latest = prices[prices.length - 1];
     const delta = latest - prices[0];
     return { min, max, latest, delta };
-  }, [item]);
+  }, [dailyPrices]);
 
   const onAddWatchlist = async (e: FormEvent) => {
     e.preventDefault();
@@ -109,18 +132,55 @@ export default function ItemDetailPage() {
       </section>
 
       <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-900">Price trend</h2>
-        <p className="mt-1 text-sm text-slate-600">See how the price moves over time.</p>
-        <div className="mt-4 h-64">
+        <h2 className="text-lg font-semibold text-slate-900">Price history</h2>
+        <p className="mt-1 text-sm text-slate-600">Lowest price across all stores, each point marks a price change.</p>
+        <div className="mt-4 h-72">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 12 }} />
-              <YAxis tick={{ fill: "#64748b", fontSize: 12 }} />
-              <Tooltip
-                formatter={(value: number) => [`$${value.toFixed(2)}`, "Price"]}
-                contentStyle={{ borderRadius: "0.75rem", borderColor: "#e2e8f0" }}
+            <LineChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+              <XAxis
+                dataKey="date"
+                tick={{ fill: "#94a3b8", fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                interval="preserveStartEnd"
+                tickFormatter={(value: string) =>
+                  new Date(value).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+                }
               />
-              <Line type="monotone" dataKey="price" stroke="#4338ca" strokeWidth={2} />
+              <YAxis
+                tick={{ fill: "#94a3b8", fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v: number) => `$${v}`}
+                width={64}
+                domain={["auto", "auto"]}
+              />
+              <Tooltip
+                formatter={(value: number) => [`$${value.toFixed(2)}`, "Best price"]}
+                labelFormatter={(label: string) =>
+                  new Date(label).toLocaleDateString("en-US", {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  })
+                }
+                contentStyle={{
+                  borderRadius: "0.75rem",
+                  borderColor: "#e2e8f0",
+                  fontSize: "13px",
+                  boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.07)",
+                }}
+                labelStyle={{ color: "#475569", fontWeight: 500 }}
+              />
+              <Line
+                type="stepAfter"
+                dataKey="price"
+                stroke="#4338ca"
+                strokeWidth={1.5}
+                dot={{ r: 3, fill: "#4338ca", strokeWidth: 0 }}
+                activeDot={{ r: 5, fill: "#4338ca", strokeWidth: 0 }}
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>

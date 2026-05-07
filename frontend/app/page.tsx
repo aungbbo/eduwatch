@@ -6,16 +6,15 @@ import { FormEvent, useEffect, useState } from "react";
 import { fetchItems } from "@/lib/api";
 import { Item } from "@/types";
 
-const CATEGORIES = ["All", "Textbook", "Stationery", "Gadgets"];
+const CATEGORIES = [
+  { value: "all", label: "All" },
+  { value: "textbook", label: "Textbook" },
+  { value: "stationery", label: "Stationery" },
+  { value: "gadgets", label: "Gadgets" },
+];
 const formatCurrency = (value?: number | null) =>
   typeof value === "number" ? `$${value.toFixed(2)}` : "N/A";
 
-function getAffordabilityBand(price?: number | null) {
-  if (price == null) return { label: "Unknown", tone: "text-slate-600 bg-slate-100" };
-  if (price < 20) return { label: "Very affordable", tone: "text-emerald-700 bg-emerald-50" };
-  if (price < 60) return { label: "Moderate", tone: "text-amber-700 bg-amber-50" };
-  return { label: "High cost", tone: "text-rose-700 bg-rose-50" };
-}
 
 export default function HomePage() {
   const [items, setItems] = useState<Item[]>([]);
@@ -25,21 +24,14 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const loadItems = async (params?: { search?: string; category?: string; maxPrice?: number }) => {
+  const loadItems = async (params: { search?: string; category: string; maxPrice?: number }) => {
     setLoading(true);
     setError("");
     try {
-      const resolvedSearch =
-        params && "search" in params
-          ? params.search
-          : search
-            ? search
-            : undefined;
-
       const data = await fetchItems({
-        search: resolvedSearch,
-        category: params?.category ?? category,
-        maxPrice: params?.maxPrice ?? (maxPrice ? Number(maxPrice) : undefined)
+        search: params.search || undefined,
+        category: params.category,
+        maxPrice: params.maxPrice,
       });
       setItems(data);
     } catch (err) {
@@ -50,7 +42,7 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    loadItems();
+    loadItems({ category: "all" });
   }, []);
 
   const onSubmit = async (e: FormEvent) => {
@@ -58,7 +50,7 @@ export default function HomePage() {
     await loadItems({
       search: search || undefined,
       category,
-      maxPrice: maxPrice ? Number(maxPrice) : undefined
+      maxPrice: maxPrice ? Number(maxPrice) : undefined,
     });
   };
 
@@ -112,8 +104,8 @@ export default function HomePage() {
           onChange={(e) => setCategory(e.target.value)}
         >
           {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
+            <option key={c.value} value={c.value}>
+              {c.label}
             </option>
           ))}
         </select>
@@ -149,13 +141,8 @@ export default function HomePage() {
               </p>
               <h2 className="mt-3 text-lg font-semibold text-slate-900">{item.name}</h2>
               <p className="mt-2 text-sm text-slate-600">{item.description || "No description available."}</p>
-              <div className="mt-4 flex items-center justify-between gap-3">
+              <div className="mt-4">
                 <p className="font-semibold text-emerald-700">Best price: {formatCurrency(item.lowest_price)}</p>
-                <span
-                  className={`rounded-full px-2 py-1 text-xs font-medium ${getAffordabilityBand(item.lowest_price).tone}`}
-                >
-                  {getAffordabilityBand(item.lowest_price).label}
-                </span>
               </div>
               <p className="mt-3 text-sm font-medium text-indigo-700 group-hover:text-indigo-800">
                 View details ->
